@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Chat</title>
+		<link
+			rel="stylesheet"
+			type="text/css"
+			href="http://localhost:3000/chatcss"
+		/>
+	</head>
+
+	<body>
+		<div id="container">
+			<ul id="messages"></ul>
+
+			<div id="child-container">
+				<p>Users connected:</p>
+				<select id="status-options">
+					<option value="online">online</option>
+					<option value="busy">busy</option>
+					<option value="offline">offline</option>
+					<option value="eating">eating</option>
+				</select>
+
+				<button id="btn-status" onclick="sendStatus()">Status</button>
+				<ul id="users-connected"></ul>
+			</div>
+		</div>
+
+		<div id="form">
+			<input id="messageInput" placeholder="Saisissez votre message..." />
+			<button onclick="sendMessage()">Envoyer</button>
+		</div>
+
+		<script src="http://localhost:3000/socket.io/socket.io.js"></script>
+		<script>
+			// set connected in session storage
+			sessionStorage.setItem("isConnected", 0);
+			let socket = io();
+			sendPseudo();
+
+			// ===========================
+			//  Components
+			// ===========================
+			const getMessageList = () => {
+				return document.getElementById("messages");
+			};
+
+			const getUserList = () => {
+				return document.getElementById("users-connected");
+			};
+
+			const getUserConnected = (userConnected) => {
+				return document.getElementById(
+					`${userConnected.id}-${userConnected.pseudo}`
+				);
+			};
+
+			const createMessage = (msg, pseudo, className) => {
+				let message = document.createElement("li");
+				message.innerHTML = `${pseudo}: ${msg}`;
+				message.className = `${className}`;
+				return message;
+			};
+
+			const createUserConnected = (user) => {
+				let message = document.createElement("li");
+				message.innerHTML = `${user.id} : ${user.pseudo} : ${user.status}`;
+				message.className = `${user.status}`;
+				message.id = `${user.id}-${user.pseudo}`;
+				return message;
+			};
+
+			// ===========================
+			//  Functions
+			// ===========================
+			function sendPseudo() {
+				const pseudo = prompt("Saisissez un pseudo:");
+				socket.emit("setPseudo", pseudo);
+			}
+
+			function sendMessage() {
+				let messageInput = document.getElementById("messageInput");
+				socket.emit("chat_message", messageInput.value);
+				messageInput.value = "";
+			}
+
+			function checkIfSameUser(credUserId, clientSocketId) {
+				return clientSocketId === credUserId;
+			}
+
+			function checkIfConnected() {
+				return sessionStorage.getItem("isConnected") === 1;
+			}
+
+			function sendStatus() {
+				const status = document.getElementById("status-options").value;
+				socket.emit("setStatus", status);
+			}
+
+			socket.on("connected", (usersConnected) => {
+				console.log("is connected");
+				const selfUser = usersConnected[socket.id];
+
+				if (!checkIfSameUser(socket.id, selfUser.socketId)) {
+					getMessageList().appendChild(
+						createMessage(`${selfUser.pseudo}`, "Connected", "connection")
+					);
+				} else {
+					getMessageList().appendChild(
+						createMessage(`You are connected`, "Connected", "connection")
+					);
+					getMessageList().appendChild(
+						createMessage(
+							`Welcome ${selfUser.pseudo}`,
+							"Connected",
+							"connection"
+						)
+					);
+				}
+				if (!checkIfConnected()) {
+					sessionStorage.setItem("isConnected", 1);
+				}
+				// refresh list user
+				getUserList().innerHTML = "";
+				Object.keys(usersConnected).forEach((key) => {
+					const user = usersConnected[key];
+					getUserList().appendChild(createUserConnected(user));
+				});
+			});
+
+			// ===========================
+			//  Sockets
+			// ===========================
+
+			socket.on("setStatus", (user) => {
+				getUserConnected(user).replaceWith(createUserConnected(user));
+			});
+
+			socket.on("getOldMessages", function (listMessages) {
+				listMessages.forEach((message) => {
+					getMessageList().appendChild(
+						createMessage(message.content, message.pseudo, "old")
+					);
+				});
+			});
+
+			socket.on("disconnected", (credUser) => {
+				getMessageList().appendChild(
+					createMessage(`${credUser.pseudo} `, "Disconnected", "disconnected")
+				);
+				sessionStorage.setItem("isConnected", 0);
+				getUserList().removeChild(getUserConnected(credUser));
+			});
+
+			socket.on("chat_message", function (msg, credUser) {
+				const className = checkIfSameUser(credUser.socketId, socket.id)
+					? `${credUser.count} myMessages`
+					: "";
+				getMessageList().appendChild(
+					createMessage(msg, credUser.pseudo, className)
+				);
+			});
+		</script>
+	</body>
+</html>
